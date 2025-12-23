@@ -1,0 +1,15 @@
+.idea/
+.buildpath
+.settings/
+.project
+*.patch
+.git/
+runtime/
+.phpintel/
+.DS_Store
+.phpunit*
+.env
+public/
+images/
+extensions/
+vendor/
