@@ -2,8 +2,7 @@
 
 ###项目背景
 
-1. 基于 zyprosoft/hyperf-common 建立的脚手架，用于快速生成一个支持 zgw 协议的后台开发项目模板
-2. MotongAdmin 脚手架的后台服务项目框架
+1. MotongAdmin 脚手架的后台服务项目框架
 
 ###ZGW 协议开发
 
@@ -91,7 +90,7 @@ php bin/hyperf.php admin:seed --reset --password admin123
 本地开发启动容器：
 
 docker run -d --name motong-admin-server \
- -v /Users/zyvincent/Desktop/iCodeFutureWorkSpace/MotongAdminWorkSpace/MotongAdminServer:/data/project \
+ -v {你的本地开发路径}:/data/project \
  -p 9666:9666 -it \
  --privileged -u root \
  --entrypoint /bin/sh \
