@@ -20,6 +20,7 @@ use ZYProSoft\Exception\HyperfCommonException;
 use ZYProSoft\Constants\ErrorCode;
 use App\Model\SysStorageConfig;
 use Carbon\Carbon;
+use ZYProSoft\Log\Log;
 
 class QiniuStorage implements StorageInterface
 {
@@ -50,7 +51,6 @@ class QiniuStorage implements StorageInterface
         $this->qiniuAuth = new QiniuAuth($accessKey, $secretKey);
         $extraConfig = $sysStorageConfig->extra_config;
         $this->ttl = $extraConfig['timeout'] ?? 3600;
-        $this->ossFileSystem = $this->fileSystemFactory->get('qiniu');
         $this->bucketManager = new BucketManager($this->qiniuAuth);
     }
 
@@ -121,7 +121,7 @@ class QiniuStorage implements StorageInterface
         }
 
         if (collect([self::IMAGE_STYLE_SMALL, self::IMAGE_STYLE_MIDDLE])->contains($scale) === false) {
-            throw new HyperfCommonException(ErrorCode::PARAM_ERROR,"scale参数只能为1或者2");
+            throw new HyperfCommonException(ErrorCode::PARAM_ERROR, "scale参数只能为1或者2");
         }
 
         $style = "-";
@@ -131,7 +131,7 @@ class QiniuStorage implements StorageInterface
             $style .= "middle";
         }
 
-        $url = $this->domain."/image/{$objectId}".$style;
+        $url = $this->domain . "/image/{$objectId}" . $style;
 
         return $this->qiniuAuth->privateDownloadUrl($url);
     }
@@ -156,16 +156,17 @@ class QiniuStorage implements StorageInterface
         return $this->commonGetUploadToken('video', 'mp4');
     }
 
-    protected function commonGetUploadToken(string $type, string $defaultExtention = '') {
+    protected function commonGetUploadToken(string $type, string $defaultExtention = '')
+    {
         $filename = Carbon::now()->getTimestampMs();
-        if(!empty($defaultExtention)) {
+        if (!empty($defaultExtention)) {
             $filename = "{$filename}.{$defaultExtention}";
         }
         $object = "{$type}/{$filename}";
-        if(!empty($this->mainDirectory)) {
+        if (!empty($this->mainDirectory)) {
             $object = "{$this->mainDirectory}/{$object}";
         }
-        $token = $this->qiniuAuth->uploadToken($this->bucket,$object,$this->ttl);
+        $token = $this->qiniuAuth->uploadToken($this->bucket, $object, $this->ttl);
 
         return [
             "id" => $filename,
@@ -174,27 +175,38 @@ class QiniuStorage implements StorageInterface
         ];
     }
 
-    protected function commonGetFileAccessUrl(string $objectId, string $type) {
+    protected function commonGetFileAccessUrl(string $objectId, string $type)
+    {
         $object = "{$type}/{$objectId}";
-        if(!empty($this->mainDirectory)) {
+        if (!empty($this->mainDirectory)) {
             $object = "{$this->mainDirectory}/{$object}";
         }
-        $url = $this->domain."/{$object}";
+        $url = $this->domain . "/{$object}";
         return $this->qiniuAuth->privateDownloadUrl($url);
     }
 
-    protected function commonCheckFileUploadSuccess(string $objectId, string $type) {
+    protected function commonCheckFileUploadSuccess(string $objectId, string $type)
+    {
         $object = "{$type}/{$objectId}";
-        if(!empty($this->mainDirectory)) {
+        if (!empty($this->mainDirectory)) {
             $object = "{$this->mainDirectory}/{$object}";
         }
-        return $this->ossFileSystem->fileExists($object);
+
+        // 直接使用七牛 SDK，避免 Flysystem 配置不一致问题
+        [$stat, $error] = $this->bucketManager->stat($this->bucket, $object);
+
+        if ($error !== null) {
+            Log::error('QiniuStorage check file upload success error: ' . $error->message());
+        }
+
+        return $error === null;
     }
 
-    public function commonCheckUploadFailThenThrowException(string $objectId, string $type, string $message) {
+    public function commonCheckUploadFailThenThrowException(string $objectId, string $type, string $message)
+    {
         $isExist = $this->commonCheckFileUploadSuccess($objectId, $type);
         if (!$isExist) {
-            throw new HyperfCommonException(ErrorCode::PARAM_ERROR,$message);
+            throw new HyperfCommonException(ErrorCode::PARAM_ERROR, $message);
         }
     }
 
@@ -208,15 +220,19 @@ class QiniuStorage implements StorageInterface
         ];
         $directory = $directoryMap[$type];
         $filename = Carbon::now()->getTimestampMs();
-        if($type === 'audio') {
+        if ($type === 'audio') {
             $filename = "{$filename}.mp3";
         }
         $object = "{$type}/{$filename}";
-        if(!empty($this->mainDirectory)) {
+        if (!empty($this->mainDirectory)) {
             $object = "{$this->mainDirectory}/{$object}";
         }
 
-        $this->ossFileSystem->writeStream($object, fopen($url, 'r'));
+        [$stat, $error] = $this->bucketManager->fetch($url, $this->bucket, $object);
+        if ($error !== null) {
+            Log::error('QiniuStorage fetch file from url error: ' . $error->message());
+            throw new HyperfCommonException(ErrorCode::PARAM_ERROR, '文件转存失败');
+        }
         return $filename;
     }
 }
